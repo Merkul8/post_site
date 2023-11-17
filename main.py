@@ -2,32 +2,44 @@ from datetime import datetime
 import re
 from typing import Any, Dict, Union
 from fastapi import FastAPI
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, validator
 
 app = FastAPI(debug=True)
 
+class EmailField(BaseModel):
+     email: EmailStr
 
-class FormField(BaseModel):
-    email: str = Field(None, pattern=r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
-    phone: str = Field(None, pattern=r"^\+7 \d{3} \d{3} \d{2} \d{2}$")
-    date: datetime = Field(None, format="%Y-%m-%d")
-    text: str = Field(None)
+class PhoneField(BaseModel):
+    phone: str
 
-    @classmethod
-    def parse_obj(cls, obj):
-        if 'date' in obj and isinstance(obj['date'], str):
-            if re.match(r'\d{2}\.\d{2}\.\d{4}', obj['date']):
-                obj['date'] = datetime.strptime(obj['date'], "%d.%m.%Y")
-            elif re.match(r'\d{4}-\d{2}-\d{2}', obj['date']):
-                obj['date'] = datetime.strptime(obj['date'], "%Y-%m-%d")
-        return obj
+    @validator('phone')
+    def validate_phone(cls, v):
+        if not re.match(r'\+7 \d{3} \d{3} \d{2} \d{2}', v):
+            raise ValueError('Invalid phone number')
+        return v
+
+class DateField(BaseModel):
+    date: datetime
+
+    @validator('date')
+    def validate_date(cls, v):
+        try:
+            datetime.strptime(v, '%d.%m.%Y')
+            datetime.strptime(v, '%Y-%m-%d')
+        except ValueError:
+           raise ValueError('Invalid date format')
+        return v
     
-    @property
-    def field_types(self):
-        return {name: field.type_ for name, field in self.__fields__.items()}
+class TextField(BaseModel):
+    text: str
 
+class FormInput(BaseModel):
+    date: DateField
+    phone: PhoneField
+    email: EmailField
+    text: TextField
 
-shablons = {
+templates = {
     1: {
         "name": "Registration form",
         "email": "user1@example.com",
@@ -64,29 +76,44 @@ shablons = {
     },
 }
 
+# Основная логика
 @app.post("/get_form")
-def get_form(text: str):
-    # Стереть следующие 5 строчек, будем принимать json вместо строки
-    text = text.split('&')
-    result_dict = {}
-    for value in text:
-        values_list = value.split('=')
-        result_dict[values_list[0]] = values_list[1]
-    for _, v in shablons.items():
-        result = get_validated_form(v, result_dict)
+def get_form(form_data: Dict[str, str]):
+    form_data = needed_fields(form_data)
+    for _, template in templates.items():
+        # Если форма соответствует шаблону возвращаем имя шаблона
+        result = get_validated_form(template, form_data)
         if result:
             return result
     else:
-        return 'Совпадений нет'
-   
+        # Иначе, проверяем типы полей
+        return check_form(form_data)
+
+# Воврат имени шаблона    
 def get_validated_form(fields_dict: dict, form_dict: dict) -> str:
     result = None
     flag = 0
     for k, _ in fields_dict.items():
         if k in form_dict and form_dict[k] == fields_dict[k]:
-            # result = fields_dict['name']
-            # break
             flag += 1
     if len(form_dict) == flag:
         result = fields_dict['name']
     return result
+
+# Воврат словаря в случае если шаблон не найден
+def check_form(form_data: dict) -> dict:
+    result_dict = {}
+    ann = FormInput.__annotations__
+    for key, _ in form_data.items():
+        if ann.get(key):
+            result_dict[key] = ann.get(key).__name__
+    return result_dict
+
+# Сортировка нужных полей в пришедшей форме
+def needed_fields(form_data: dict):
+    sorted_form_data = {}
+    needed_fields_list = ['date', 'phone', 'email', 'text']
+    for i in form_data.keys():
+        if i in needed_fields_list:
+            sorted_form_data[i] = form_data[i]
+    return sorted_form_data
