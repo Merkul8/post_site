@@ -1,8 +1,9 @@
 from datetime import datetime
 import re
-from typing import Any, Dict, Union
+from typing import Dict
 from fastapi import FastAPI
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, validator
+from models import get_all_templates
 
 app = FastAPI(debug=True)
 
@@ -39,47 +40,11 @@ class FormInput(BaseModel):
     email: EmailField
     text: TextField
 
-templates = {
-    1: {
-        "name": "Registration form",
-        "email": "user1@example.com",
-        "phone": "+7 912 445 67 89",
-        "date": "2023-01-16",
-        "text": "This is a registration form.",
-    },
-    2: {
-        "name": "Feedback form",
-        "email": "user2@example.com",
-        "phone": "+7 912 345 78 89",
-        "text": "This is a feedback form.",
-    },
-    3: {
-        "name": "Product order form",
-        "email": "user3@example.com",
-        "phone": "+7 912 345 11 89",
-        "date": "2023-02-16",
-        "text": "This is a product order form.",
-    },
-    4: {
-        "name": "Booking form",
-        "email": "user4@example.com",
-        "phone": "+7 919 345 67 89",
-        "date": "2023-03-16",
-        "text": "This is a booking form.",
-    },
-    5: {
-        "name": "Callback request form",
-        "email": "user5@example.com",
-        "phone": "+7 911 945 67 89",
-        "date": "2023-10-16",
-        "text": "This is a callback request form.",
-    },
-}
-
 # Основная логика
 @app.post("/get_form")
 def get_form(form_data: Dict[str, str]):
     form_data = needed_fields(form_data)
+    templates = get_all_templates()
     for _, template in templates.items():
         # Если форма соответствует шаблону возвращаем имя шаблона
         result = get_validated_form(template, form_data)
